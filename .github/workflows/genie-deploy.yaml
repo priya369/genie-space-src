@@ -21,7 +21,9 @@ on:
       - main
       - "release/**"
     paths:
-      - "genie-spaces/pock-decision-sciences-techops/**"
+      - "genie-spaces/dev/**"
+      - "genie-spaces/stage/**"
+      - "genie-spaces/prod/**"
       - "scripts/validate-genie-plan.sh"
   workflow_dispatch:
     inputs:
@@ -31,7 +33,7 @@ on:
         default: false
 
 env:
-  DIRECTORY: genie-spaces/pock-decision-sciences-techops
+  DIRECTORY: genie-spaces
 
 # Never run two deploys against the same environment at once.
 concurrency:
@@ -59,13 +61,13 @@ jobs:
         with:
           filters: |
             dev:
-              - 'genie-spaces/pock-decision-sciences-techops/dev/**'
+              - 'genie-spaces/dev/**'
               - 'scripts/validate-genie-plan.sh'
             stage:
-              - 'genie-spaces/pock-decision-sciences-techops/stage/**'
+              - 'genie-spaces/stage/**'
               - 'scripts/validate-genie-plan.sh'
             prod:
-              - 'genie-spaces/pock-decision-sciences-techops/prod/**'
+              - 'genie-spaces/prod/**'
               - 'scripts/validate-genie-plan.sh'
 
   # ------------------------------------------------------------------
@@ -77,7 +79,7 @@ jobs:
     runs-on: ubuntu-latest
     environment: dev
     env:
-      GENIE_CONFIG_PATH: genie-spaces/pock-decision-sciences-techops/dev
+      GENIE_CONFIG_PATH: genie-spaces/dev
       DATABRICKS_HOST: ${{ vars.DATABRICKS_HOST }}
       DATABRICKS_CLIENT_ID: ${{ secrets.DATABRICKS_CLIENT_ID }}
       DATABRICKS_CLIENT_SECRET: ${{ secrets.DATABRICKS_CLIENT_SECRET }}
@@ -110,7 +112,7 @@ jobs:
     runs-on: ubuntu-latest
     environment: stage
     env:
-      GENIE_CONFIG_PATH: genie-spaces/pock-decision-sciences-techops/stage
+      GENIE_CONFIG_PATH: genie-spaces/stage
       DATABRICKS_HOST: ${{ vars.DATABRICKS_HOST }}
       DATABRICKS_CLIENT_ID: ${{ secrets.DATABRICKS_CLIENT_ID }}
       DATABRICKS_CLIENT_SECRET: ${{ secrets.DATABRICKS_CLIENT_SECRET }}
@@ -142,7 +144,7 @@ jobs:
     runs-on: ubuntu-latest
     environment: prod-plan
     env:
-      GENIE_CONFIG_PATH: genie-spaces/pock-decision-sciences-techops/prod
+      GENIE_CONFIG_PATH: genie-spaces/prod
       DATABRICKS_HOST: ${{ vars.DATABRICKS_HOST }}
       DATABRICKS_CLIENT_ID: ${{ secrets.DATABRICKS_CLIENT_ID }}
       DATABRICKS_CLIENT_SECRET: ${{ secrets.DATABRICKS_CLIENT_SECRET }}
@@ -171,7 +173,7 @@ jobs:
     runs-on: ubuntu-latest
     environment: prod
     env:
-      GENIE_CONFIG_PATH: genie-spaces/pock-decision-sciences-techops/prod
+      GENIE_CONFIG_PATH: genie-spaces/prod
       DATABRICKS_HOST: ${{ vars.DATABRICKS_HOST }}
       DATABRICKS_CLIENT_ID: ${{ secrets.DATABRICKS_CLIENT_ID }}
       DATABRICKS_CLIENT_SECRET: ${{ secrets.DATABRICKS_CLIENT_SECRET }}
