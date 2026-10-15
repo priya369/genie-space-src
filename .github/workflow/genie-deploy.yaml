@@ -1,0 +1,189 @@
+name: Genie Space Deploy
+
+# Converted from the Concourse pipeline `techops-genie-space-deploy`.
+#
+#   dev    : plan -> apply   on push to dev / main / release/**
+#   stage  : plan -> apply   on push to main / release/**
+#   prod   : plan            on push to main / release/**
+#   prod   : apply           MANUAL only (workflow_dispatch) + environment approval
+#
+# Secrets / variables live in GitHub Environments (Settings -> Environments):
+#   environment: dev | stage | prod
+#     secrets:   DATABRICKS_CLIENT_ID, DATABRICKS_CLIENT_SECRET
+#     variables: DATABRICKS_HOST
+#   environment `prod` should have "Required reviewers" enabled
+#   (this replaces `manual_freeze_approval: true`).
+
+on:
+  push:
+    branches:
+      - dev
+      - main
+      - "release/**"
+    paths:
+      - "genie-spaces/pock-decision-sciences-techops/**"
+      - "scripts/validate-genie-plan.sh"
+  workflow_dispatch:
+    inputs:
+      apply_prod:
+        description: "Apply to PROD (needs approval from the prod environment reviewers)"
+        type: boolean
+        default: false
+
+env:
+  DIRECTORY: genie-spaces/pock-decision-sciences-techops
+
+# Never run two deploys against the same environment at once.
+concurrency:
+  group: genie-deploy-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  # ------------------------------------------------------------------
+  # Per-environment path filter (Concourse `paths:` per job)
+  # ------------------------------------------------------------------
+  changes:
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    outputs:
+      dev: ${{ steps.filter.outputs.dev }}
+      stage: ${{ steps.filter.outputs.stage }}
+      prod: ${{ steps.filter.outputs.prod }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          filters: |
+            dev:
+              - 'genie-spaces/pock-decision-sciences-techops/dev/**'
+              - 'scripts/validate-genie-plan.sh'
+            stage:
+              - 'genie-spaces/pock-decision-sciences-techops/stage/**'
+              - 'scripts/validate-genie-plan.sh'
+            prod:
+              - 'genie-spaces/pock-decision-sciences-techops/prod/**'
+              - 'scripts/validate-genie-plan.sh'
+
+  # ------------------------------------------------------------------
+  # DEV: plan (read-only) then apply
+  # ------------------------------------------------------------------
+  dev-deploy:
+    needs: changes
+    if: needs.changes.outputs.dev == 'true'
+    runs-on: ubuntu-latest
+    environment: dev
+    env:
+      GENIE_CONFIG_PATH: genie-spaces/pock-decision-sciences-techops/dev
+      DATABRICKS_HOST: ${{ vars.DATABRICKS_HOST }}
+      DATABRICKS_CLIENT_ID: ${{ secrets.DATABRICKS_CLIENT_ID }}
+      DATABRICKS_CLIENT_SECRET: ${{ secrets.DATABRICKS_CLIENT_SECRET }}
+      GENIE_ALLOW_DELETE: "true"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
+      - name: Install dependencies
+        run: |
+          if [ -f requirements.txt ]; then pip install -r requirements.txt; else pip install requests pyyaml; fi
+      - name: genie-plan-dev
+        env:
+          GENIE_MODE: plan
+        run: bash scripts/validate-genie-plan.sh
+      - name: genie-apply-dev
+        env:
+          GENIE_MODE: apply
+        run: bash scripts/validate-genie-plan.sh
+
+  # ------------------------------------------------------------------
+  # STAGE: plan then apply (main / release only)
+  # ------------------------------------------------------------------
+  stage-deploy:
+    needs: changes
+    if: >-
+      needs.changes.outputs.stage == 'true' &&
+      (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/heads/release/'))
+    runs-on: ubuntu-latest
+    environment: stage
+    env:
+      GENIE_CONFIG_PATH: genie-spaces/pock-decision-sciences-techops/stage
+      DATABRICKS_HOST: ${{ vars.DATABRICKS_HOST }}
+      DATABRICKS_CLIENT_ID: ${{ secrets.DATABRICKS_CLIENT_ID }}
+      DATABRICKS_CLIENT_SECRET: ${{ secrets.DATABRICKS_CLIENT_SECRET }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
+      - name: Install dependencies
+        run: |
+          if [ -f requirements.txt ]; then pip install -r requirements.txt; else pip install requests pyyaml; fi
+      - name: genie-plan-stage
+        env:
+          GENIE_MODE: plan
+        run: bash scripts/validate-genie-plan.sh
+      - name: genie-apply-stage
+        env:
+          GENIE_MODE: apply
+        run: bash scripts/validate-genie-plan.sh
+
+  # ------------------------------------------------------------------
+  # PROD PLAN: automatic, read-only (main / release only)
+  # ------------------------------------------------------------------
+  plan-prod:
+    needs: changes
+    if: >-
+      needs.changes.outputs.prod == 'true' &&
+      (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/heads/release/'))
+    runs-on: ubuntu-latest
+    environment: prod-plan
+    env:
+      GENIE_CONFIG_PATH: genie-spaces/pock-decision-sciences-techops/prod
+      DATABRICKS_HOST: ${{ vars.DATABRICKS_HOST }}
+      DATABRICKS_CLIENT_ID: ${{ secrets.DATABRICKS_CLIENT_ID }}
+      DATABRICKS_CLIENT_SECRET: ${{ secrets.DATABRICKS_CLIENT_SECRET }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
+      - name: Install dependencies
+        run: |
+          if [ -f requirements.txt ]; then pip install -r requirements.txt; else pip install requests pyyaml; fi
+      - name: genie-plan-prod
+        env:
+          GENIE_MODE: plan
+        run: bash scripts/validate-genie-plan.sh
+
+  # ------------------------------------------------------------------
+  # PROD APPLY: manual only (Concourse autoTriggerFrom: [])
+  # The `prod` environment must have required reviewers = manual freeze approval.
+  # ------------------------------------------------------------------
+  deploy-prod:
+    if: >-
+      github.event_name == 'workflow_dispatch' &&
+      inputs.apply_prod == true &&
+      (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/heads/release/'))
+    runs-on: ubuntu-latest
+    environment: prod
+    env:
+      GENIE_CONFIG_PATH: genie-spaces/pock-decision-sciences-techops/prod
+      DATABRICKS_HOST: ${{ vars.DATABRICKS_HOST }}
+      DATABRICKS_CLIENT_ID: ${{ secrets.DATABRICKS_CLIENT_ID }}
+      DATABRICKS_CLIENT_SECRET: ${{ secrets.DATABRICKS_CLIENT_SECRET }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
+      - name: Install dependencies
+        run: |
+          if [ -f requirements.txt ]; then pip install -r requirements.txt; else pip install requests pyyaml; fi
+      - name: genie-apply-prod
+        env:
+          GENIE_MODE: apply
+        run: bash scripts/validate-genie-plan.sh
