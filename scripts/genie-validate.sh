@@ -69,4 +69,4 @@ done <<< "${DELETED_FILES}"
 
 [[ "${GENIE_DRY_RUN:-false}" == "true" ]] && ARGS+=(--dry-run)
 
-python "${SCRIPT_DIR}/genie_space.py" "${ARGS[@]}"
+python "${SCRIPT_DIR}/genie-deploy.py" "${ARGS[@]}"
